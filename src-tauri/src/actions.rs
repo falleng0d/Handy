@@ -164,6 +164,17 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
         prompt
     };
 
+    // Substitute the `${app}` placeholder with the foreground application's
+    // name (macOS + Windows; empty elsewhere or when unavailable). The
+    // `contains` check avoids a platform API call when unused.
+    let prompt = if prompt.contains("${app}") {
+        let app = crate::foreground::foreground_app_name().unwrap_or_default();
+        debug!("Substituting ${{app}} placeholder -> '{}'", app);
+        prompt.replace("${app}", &app)
+    } else {
+        prompt
+    };
+
     debug!(
         "Starting LLM post-processing with provider '{}' (model: {})",
         provider.id, model
