@@ -139,6 +139,22 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
         return None;
     }
 
+    // Inject the focused text field's current contents for the `${input}`
+    // placeholder, giving the LLM context about what the user is editing.
+    // macOS only via the Accessibility API; resolves to empty elsewhere or
+    // when the field is unavailable. The `contains` check avoids an AX read
+    // when the placeholder is unused.
+    let prompt = if prompt.contains("${input}") {
+        let input_context = crate::accessibility::focused_field_text().unwrap_or_default();
+        debug!(
+            "Substituting ${{input}} placeholder ({} chars of focused-field context)",
+            input_context.len()
+        );
+        prompt.replace("${input}", &input_context)
+    } else {
+        prompt
+    };
+
     debug!(
         "Starting LLM post-processing with provider '{}' (model: {})",
         provider.id, model
