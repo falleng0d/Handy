@@ -57,6 +57,17 @@ fn strip_invisible_chars(s: &str) -> String {
     s.replace(['\u{200B}', '\u{200C}', '\u{200D}', '\u{FEFF}'], "")
 }
 
+/// Replace the first character of the string with its lowercase form,
+/// leaving the rest untouched. Unicode-correct (a single char may map to
+/// multiple chars when lowercased).
+fn lowercase_first_char(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(first) => first.to_lowercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
 /// Build a system prompt from the user's prompt template.
 /// Removes `${output}` placeholder since the transcription is sent as the user message.
 fn build_system_prompt(prompt_template: &str) -> String {
@@ -391,6 +402,10 @@ pub(crate) async fn process_transcription_output(
         }
     } else if final_text != transcription {
         post_processed_text = Some(final_text.clone());
+    }
+
+    if settings.lowercase_first_letter {
+        final_text = lowercase_first_char(&final_text);
     }
 
     ProcessedTranscription {
