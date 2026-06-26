@@ -25,8 +25,8 @@ export const ContinuationLowercase: React.FC<ContinuationLowercaseProps> =
         checked={continuationLowercaseEnabled}
         onChange={(enabled) => updateSetting("continuation_lowercase", enabled)}
         isUpdating={isUpdating("continuation_lowercase")}
-        label={t("settings.advanced.continuationLowercase.label")}
-        description={t("settings.advanced.continuationLowercase.description")}
+        label={t("settings.debug.continuationLowercase.label")}
+        description={t("settings.debug.continuationLowercase.description")}
         descriptionMode={descriptionMode}
         grouped={grouped}
       />

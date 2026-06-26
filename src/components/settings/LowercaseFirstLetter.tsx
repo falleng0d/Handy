@@ -21,8 +21,8 @@ export const LowercaseFirstLetter: React.FC<LowercaseFirstLetterProps> =
         checked={lowercaseFirstLetterEnabled}
         onChange={(enabled) => updateSetting("lowercase_first_letter", enabled)}
         isUpdating={isUpdating("lowercase_first_letter")}
-        label={t("settings.advanced.lowercaseFirstLetter.label")}
-        description={t("settings.advanced.lowercaseFirstLetter.description")}
+        label={t("settings.debug.lowercaseFirstLetter.label")}
+        description={t("settings.debug.lowercaseFirstLetter.description")}
         descriptionMode={descriptionMode}
         grouped={grouped}
       />
