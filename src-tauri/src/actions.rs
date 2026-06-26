@@ -145,10 +145,17 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
     // when the field is unavailable. The `contains` check avoids an AX read
     // when the placeholder is unused.
     let prompt = if prompt.contains("${input}") {
-        let input_context = crate::accessibility::focused_field_text().unwrap_or_default();
+        let raw = crate::accessibility::focused_field_text().unwrap_or_default();
+        let input_context = crate::input_context::limit_context(
+            &raw,
+            settings.post_process_input_max_paragraphs,
+            settings.post_process_input_max_lines,
+            settings.post_process_input_max_chars,
+        );
         debug!(
-            "Substituting ${{input}} placeholder ({} chars of focused-field context)",
-            input_context.len()
+            "Substituting ${{input}} placeholder ({} chars after limits; {} raw)",
+            input_context.len(),
+            raw.len()
         );
         prompt.replace("${input}", &input_context)
     } else {

@@ -119,6 +119,12 @@ const settingUpdaters: {
     commands.changeWordCorrectionThresholdSetting(value as number),
   paste_delay_ms: (value) =>
     commands.changePasteDelayMsSetting(value as number),
+  post_process_input_max_paragraphs: (value) =>
+    commands.changePostProcessInputMaxParagraphsSetting(value as number),
+  post_process_input_max_lines: (value) =>
+    commands.changePostProcessInputMaxLinesSetting(value as number),
+  post_process_input_max_chars: (value) =>
+    commands.changePostProcessInputMaxCharsSetting(value as number),
   paste_method: (value) => commands.changePasteMethodSetting(value as string),
   typing_tool: (value) => commands.changeTypingToolSetting(value as string),
   external_script_path: (value) =>

@@ -9,6 +9,7 @@ mod clipboard;
 mod commands;
 mod helpers;
 mod input;
+mod input_context;
 mod llm_client;
 mod managers;
 mod overlay;
@@ -509,6 +510,9 @@ pub fn run(cli_args: CliArgs) {
             shortcut::change_word_correction_threshold_setting,
             shortcut::change_extra_recording_buffer_setting,
             shortcut::change_paste_delay_ms_setting,
+            shortcut::change_post_process_input_max_paragraphs_setting,
+            shortcut::change_post_process_input_max_lines_setting,
+            shortcut::change_post_process_input_max_chars_setting,
             shortcut::change_paste_method_setting,
             shortcut::get_available_typing_tools,
             shortcut::change_typing_tool_setting,

@@ -706,6 +706,42 @@ pub fn change_paste_delay_ms_setting(app: AppHandle, ms: u64) -> Result<(), Stri
 
 #[tauri::command]
 #[specta::specta]
+pub fn change_post_process_input_max_paragraphs_setting(
+    app: AppHandle,
+    value: usize,
+) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.post_process_input_max_paragraphs = value;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_post_process_input_max_lines_setting(
+    app: AppHandle,
+    value: usize,
+) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.post_process_input_max_lines = value;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_post_process_input_max_chars_setting(
+    app: AppHandle,
+    value: usize,
+) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.post_process_input_max_chars = value;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn change_paste_method_setting(app: AppHandle, method: String) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     let parsed = match method.as_str() {

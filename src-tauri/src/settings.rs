@@ -421,6 +421,12 @@ pub struct AppSettings {
     pub show_tray_icon: bool,
     #[serde(default = "default_paste_delay_ms")]
     pub paste_delay_ms: u64,
+    #[serde(default)]
+    pub post_process_input_max_paragraphs: usize,
+    #[serde(default)]
+    pub post_process_input_max_lines: usize,
+    #[serde(default)]
+    pub post_process_input_max_chars: usize,
     #[serde(default = "default_typing_tool")]
     pub typing_tool: TypingTool,
     pub external_script_path: Option<String>,
@@ -813,6 +819,9 @@ pub fn get_default_settings() -> AppSettings {
         keyboard_implementation: KeyboardImplementation::default(),
         show_tray_icon: default_show_tray_icon(),
         paste_delay_ms: default_paste_delay_ms(),
+        post_process_input_max_paragraphs: 0,
+        post_process_input_max_lines: 0,
+        post_process_input_max_chars: 0,
         typing_tool: default_typing_tool(),
         external_script_path: None,
         custom_filler_words: None,

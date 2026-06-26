@@ -360,6 +360,22 @@
     },
     "postProcessing": {
       "title": "Post Process",
+      "inputContextLimits": {
+        "title": "Input Context Limits",
+        "description": "Trim the focused field's text used by the ${input} placeholder to its tail. 0 means unlimited; the most restrictive limit wins.",
+        "maxParagraphs": {
+          "label": "Max paragraphs",
+          "description": "Keep only the last N paragraphs of the focused field (a paragraph break is two or more consecutive newlines). 0 means unlimited."
+        },
+        "maxLines": {
+          "label": "Max lines",
+          "description": "Keep only the last N lines of the focused field. 0 means unlimited."
+        },
+        "maxChars": {
+          "label": "Max characters",
+          "description": "Keep only the last N characters of the focused field. 0 means unlimited."
+        }
+      },
       "hotkey": {
         "title": "Hotkey"
       },
