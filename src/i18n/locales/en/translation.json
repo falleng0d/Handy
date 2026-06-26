@@ -416,7 +416,7 @@
         "title": "Prompt",
         "selectedPrompt": {
           "title": "Selected Prompt",
-          "description": "Select a template for refining transcriptions or create a new one. Use ${output} inside the prompt text to reference the captured transcript, and ${input} to reference the current text of the focused field (macOS only)."
+          "description": "Select a template for refining transcriptions or create a new one. Use ${output} inside the prompt text to reference the captured transcript, and ${input} to reference the current text of the focused field (macOS only). Wrap a part of the prompt between <on input> and </on input> to include that section only when the focused field has text; the tags themselves are always removed."
         },
         "noPrompts": "No prompts available",
         "selectPrompt": "Select a prompt",

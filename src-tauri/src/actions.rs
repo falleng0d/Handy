@@ -144,7 +144,7 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
     // macOS only via the Accessibility API; resolves to empty elsewhere or
     // when the field is unavailable. The `contains` check avoids an AX read
     // when the placeholder is unused.
-    let prompt = if prompt.contains("${input}") {
+    let prompt = if prompt.contains("${input}") || prompt.contains("<on input>") {
         let raw = crate::accessibility::focused_field_text().unwrap_or_default();
         let input_context = crate::input_context::limit_context(
             &raw,
@@ -152,12 +152,14 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
             settings.post_process_input_max_lines,
             settings.post_process_input_max_chars,
         );
+        let input_available = !input_context.trim().is_empty();
         debug!(
-            "Substituting ${{input}} placeholder ({} chars after limits; {} raw)",
+            "Rendering input template (available={}, {} chars after limits, {} raw)",
+            input_available,
             input_context.len(),
             raw.len()
         );
-        prompt.replace("${input}", &input_context)
+        crate::input_context::render_input(&prompt, &input_context, input_available)
     } else {
         prompt
     };
