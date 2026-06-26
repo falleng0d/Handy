@@ -408,6 +408,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub lowercase_first_letter: bool,
     #[serde(default)]
+    pub remove_trailing_punctuation: bool,
+    #[serde(default)]
     pub continuation_lowercase: bool,
     #[serde(default = "default_app_language")]
     pub app_language: String,
@@ -812,6 +814,7 @@ pub fn get_default_settings() -> AppSettings {
         mute_while_recording: false,
         append_trailing_space: false,
         lowercase_first_letter: false,
+        remove_trailing_punctuation: false,
         continuation_lowercase: false,
         app_language: default_app_language(),
         experimental_enabled: false,

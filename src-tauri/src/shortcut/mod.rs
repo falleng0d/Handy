@@ -491,6 +491,18 @@ pub fn change_lowercase_first_letter_setting(app: AppHandle, enabled: bool) -> R
 
 #[tauri::command]
 #[specta::specta]
+pub fn change_remove_trailing_punctuation_setting(
+    app: AppHandle,
+    enabled: bool,
+) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.remove_trailing_punctuation = enabled;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn change_continuation_lowercase_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     settings.continuation_lowercase = enabled;

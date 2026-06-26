@@ -435,6 +435,10 @@ pub(crate) async fn process_transcription_output(
         final_text = lowercase_first_char(&final_text);
     }
 
+    if settings.remove_trailing_punctuation {
+        final_text = crate::text_finalize::strip_trailing_separators(&final_text);
+    }
+
     ProcessedTranscription {
         final_text,
         post_processed_text,

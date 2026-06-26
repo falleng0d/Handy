@@ -16,6 +16,7 @@ mod overlay;
 pub mod portable;
 mod settings;
 mod shortcut;
+mod text_finalize;
 mod signal_handle;
 mod transcription_coordinator;
 mod tray;
@@ -497,6 +498,7 @@ pub fn run(cli_args: CliArgs) {
             shortcut::reset_binding,
             shortcut::change_ptt_setting,
             shortcut::change_lowercase_first_letter_setting,
+            shortcut::change_remove_trailing_punctuation_setting,
             shortcut::change_continuation_lowercase_setting,
             shortcut::change_audio_feedback_setting,
             shortcut::change_audio_feedback_volume_setting,

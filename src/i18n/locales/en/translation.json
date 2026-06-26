@@ -525,6 +525,10 @@
         "label": "Lowercase first letter when continuing (macOS)",
         "description": "When the focused text field already contains text, lowercase the first letter of the transcript so it continues the existing sentence. Uses the macOS Accessibility API."
       },
+      "removeTrailingPunctuation": {
+        "label": "Remove trailing punctuation",
+        "description": "Remove word-separating punctuation (. , ; : …) from the end of the final transcript. Question marks and exclamation points are kept."
+      },
       "keyboardImplementation": {
         "title": "Keyboard Implementation",
         "description": "Choose the keyboard shortcut backend.",

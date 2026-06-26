@@ -145,6 +145,8 @@ const settingUpdaters: {
     commands.changeAppendTrailingSpaceSetting(value as boolean),
   lowercase_first_letter: (value) =>
     commands.changeLowercaseFirstLetterSetting(value as boolean),
+  remove_trailing_punctuation: (value) =>
+    commands.changeRemoveTrailingPunctuationSetting(value as boolean),
   continuation_lowercase: (value) =>
     commands.changeContinuationLowercaseSetting(value as boolean),
   log_level: (value) => commands.setLogLevel(value as any),
