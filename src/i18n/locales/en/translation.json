@@ -505,6 +505,10 @@
         "label": "Lowercase first letter",
         "description": "Replace the first character of the final transcript with its lowercase version, after all processing."
       },
+      "continuationLowercase": {
+        "label": "Lowercase first letter when continuing (macOS)",
+        "description": "When the focused text field already contains text, lowercase the first letter of the transcript so it continues the existing sentence. Uses the macOS Accessibility API."
+      },
       "keyboardImplementation": {
         "title": "Keyboard Implementation",
         "description": "Choose the keyboard shortcut backend.",

@@ -14,6 +14,7 @@ import { AutoSubmit } from "../AutoSubmit";
 import { PostProcessingToggle } from "../PostProcessingToggle";
 import { AppendTrailingSpace } from "../AppendTrailingSpace";
 import { LowercaseFirstLetter } from "../LowercaseFirstLetter";
+import { ContinuationLowercase } from "../ContinuationLowercase";
 import { HistoryLimit } from "../HistoryLimit";
 import { RecordingRetentionPeriodSelector } from "../RecordingRetentionPeriod";
 import { ExperimentalToggle } from "../ExperimentalToggle";
@@ -49,6 +50,7 @@ export const AdvancedSettings: React.FC = () => {
         <CustomWords descriptionMode="tooltip" grouped />
         <AppendTrailingSpace descriptionMode="tooltip" grouped={true} />
         <LowercaseFirstLetter descriptionMode="tooltip" grouped={true} />
+        <ContinuationLowercase descriptionMode="tooltip" grouped={true} />
       </SettingsGroup>
 
       <SettingsGroup title={t("settings.advanced.groups.history")}>

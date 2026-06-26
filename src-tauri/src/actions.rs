@@ -408,6 +408,10 @@ pub(crate) async fn process_transcription_output(
         final_text = lowercase_first_char(&final_text);
     }
 
+    if settings.continuation_lowercase && crate::accessibility::focused_field_has_text() {
+        final_text = lowercase_first_char(&final_text);
+    }
+
     ProcessedTranscription {
         final_text,
         post_processed_text,
