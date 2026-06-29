@@ -15,7 +15,7 @@ export const ContinuationLowercase: React.FC<ContinuationLowercaseProps> =
     const { getSetting, updateSetting, isUpdating } = useSettings();
     const osType = useOsType();
 
-    if (osType !== "macos") return null;
+    if (osType !== "macos" && osType !== "windows") return null;
 
     const continuationLowercaseEnabled =
       getSetting("continuation_lowercase") || false;

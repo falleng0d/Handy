@@ -16,8 +16,8 @@ export const InputContextLimits: React.FC = () => {
   const { getSetting, updateSetting, isUpdating } = useSettings();
   const osType = useOsType();
 
-  // `${input}` is macOS-only, so these limits only apply there.
-  if (osType !== "macos") return null;
+  // `${input}` is read via the platform accessibility API on macOS and Windows.
+  if (osType !== "macos" && osType !== "windows") return null;
 
   const handleChange =
     (key: LimitKey) => (event: React.ChangeEvent<HTMLInputElement>) => {

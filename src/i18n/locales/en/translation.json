@@ -416,7 +416,7 @@
         "title": "Prompt",
         "selectedPrompt": {
           "title": "Selected Prompt",
-          "description": "Select a template for refining transcriptions or create a new one. Use ${output} inside the prompt text to reference the captured transcript, and ${input} to reference the current text of the focused field (macOS only). Wrap a part of the prompt between <on input> and </on input> to include that section only when the focused field has text; the tags themselves are always removed. Use ${app} to reference the name of the active application."
+          "description": "Select a template for refining transcriptions or create a new one. Use ${output} inside the prompt text to reference the captured transcript, and ${input} to reference the current text of the focused field (macOS and Windows). Wrap a part of the prompt between <on input> and </on input> to include that section only when the focused field has text; the tags themselves are always removed. Use ${app} to reference the name of the active application."
         },
         "noPrompts": "No prompts available",
         "selectPrompt": "Select a prompt",
@@ -425,7 +425,7 @@
         "promptLabelPlaceholder": "Enter prompt name",
         "promptInstructions": "Prompt Instructions",
         "promptInstructionsPlaceholder": "Write the instructions to run after transcription. Example: Improve grammar and clarity for the following text: ${output}",
-        "promptTip": "Tip: Use <code>${output}</code> to insert the transcribed text, <code>${input}</code> to insert the current text of the focused field for context (macOS only), and <code>${app}</code> to insert the name of the active application.",
+        "promptTip": "Tip: Use <code>${output}</code> to insert the transcribed text, <code>${input}</code> to insert the current text of the focused field for context (macOS and Windows), and <code>${app}</code> to insert the name of the active application.",
         "updatePrompt": "Update Prompt",
         "deletePrompt": "Delete Prompt",
         "createPrompt": "Create Prompt",
@@ -522,8 +522,8 @@
         "description": "Replace the first character of the final transcript with its lowercase version, after all processing."
       },
       "continuationLowercase": {
-        "label": "Lowercase first letter when continuing (macOS)",
-        "description": "When the focused text field already contains text, lowercase the first letter of the transcript so it continues the existing sentence. Uses the macOS Accessibility API."
+        "label": "Lowercase first letter when continuing",
+        "description": "When the focused text field already contains text, lowercase the first letter of the transcript so it continues the existing sentence. Uses the platform accessibility API (macOS and Windows)."
       },
       "removeTrailingPunctuation": {
         "label": "Remove trailing punctuation",
