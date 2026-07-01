@@ -139,7 +139,7 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
         return None;
     }
 
-    // Inject the focused text field's current contents for the `${input}`
+    // Inject the focused text field's text before the caret for the `${input}`
     // placeholder, giving the LLM context about what the user is editing.
     // macOS (AX) and Windows (UI Automation); resolves to empty elsewhere or
     // when the field is unavailable. The `contains` check avoids an AX read

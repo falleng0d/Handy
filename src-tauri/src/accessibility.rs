@@ -1,18 +1,20 @@
 //! Accessibility helpers for reading the currently focused text field.
 //!
-//! Used to detect "continuation" (focused field already contains text) and to
-//! inject the focused field's contents into post-processing prompts. macOS reads
+//! Used to detect "continuation" (text before the caret exists) and to
+//! inject text up to the caret into post-processing prompts. macOS reads
 //! via Accessibility (AX), Windows via UI Automation (UIA), and other platforms
 //! are no-ops returning `None`/`false`.
 
 #[cfg(target_os = "macos")]
 mod imp {
     use accessibility_sys::{
-        kAXErrorSuccess, kAXFocusedUIElementAttribute, kAXValueAttribute,
-        AXUIElementCopyAttributeValue, AXUIElementCreateSystemWide, AXUIElementSetMessagingTimeout,
+        kAXErrorSuccess, kAXFocusedUIElementAttribute, kAXSelectedTextRangeAttribute,
+        kAXValueAttribute, kAXValueTypeCFRange, AXUIElementCopyAttributeValue,
+        AXUIElementCreateSystemWide, AXUIElementSetMessagingTimeout, AXValueGetValue, AXValueRef,
     };
-    use core_foundation::base::{CFGetTypeID, CFRelease, CFTypeRef, TCFType};
+    use core_foundation::base::{CFGetTypeID, CFRange, CFRelease, CFTypeRef, TCFType};
     use core_foundation::string::{CFString, CFStringRef};
+    use std::ffi::c_void;
     use std::ptr;
 
     /// Copy an attribute value of `element` as a raw CFTypeRef following the CF
@@ -28,9 +30,10 @@ mod imp {
         value
     }
 
-    /// Read the text content of the currently focused UI element, if it is a
-    /// text-bearing element. Returns `None` when there is no focused element,
-    /// the element exposes no string value, or accessibility is not trusted.
+    /// Text content of the focused UI element up to the caret (i.e. the text
+    /// before the insertion point). Falls back to the full value when the caret
+    /// position can't be determined. Returns `None` when there is no focused
+    /// element, it exposes no string value, or accessibility is not trusted.
     pub fn focused_field_text() -> Option<String> {
         unsafe {
             let system = AXUIElementCreateSystemWide();
@@ -47,21 +50,61 @@ mod imp {
             }
 
             let value = copy_attribute(focused, kAXValueAttribute);
-            CFRelease(focused);
             if value.is_null() {
+                CFRelease(focused);
                 return None;
             }
-
             // AXValue is only a CFString for text fields; bail out otherwise
-            // (e.g. sliders return CFNumber, ranges return AXValue wrappers).
-            if CFGetTypeID(value) == CFString::type_id() {
-                let s = CFString::wrap_under_create_rule(value as CFStringRef);
-                Some(s.to_string())
-            } else {
+            // (e.g. sliders return CFNumber).
+            if CFGetTypeID(value) != CFString::type_id() {
                 CFRelease(value);
-                None
+                CFRelease(focused);
+                return None;
             }
+            let full = CFString::wrap_under_create_rule(value as CFStringRef).to_string();
+
+            let caret = caret_utf16_index(focused);
+            CFRelease(focused);
+
+            Some(match caret {
+                Some(loc) => truncate_utf16(&full, loc),
+                None => full,
+            })
         }
+    }
+
+    /// Caret position as a UTF-16 offset, from the element's selected text range
+    /// (the start of the current selection / insertion point). `None` when the
+    /// attribute is missing or not a `CFRange` AXValue.
+    unsafe fn caret_utf16_index(element: CFTypeRef) -> Option<usize> {
+        let range_ref = copy_attribute(element, kAXSelectedTextRangeAttribute);
+        if range_ref.is_null() {
+            return None;
+        }
+        let mut range = CFRange {
+            location: 0,
+            length: 0,
+        };
+        // AXValueGetValue is defensive: it returns false if `range_ref` is not a
+        // CFRange-typed AXValue, so this is safe to call on any CFTypeRef.
+        let ok = AXValueGetValue(
+            range_ref as AXValueRef,
+            kAXValueTypeCFRange,
+            &mut range as *mut _ as *mut c_void,
+        );
+        CFRelease(range_ref);
+        if ok && range.location >= 0 {
+            Some(range.location as usize)
+        } else {
+            None
+        }
+    }
+
+    /// Keep the first `utf16_len` UTF-16 code units of `s`.
+    fn truncate_utf16(s: &str, utf16_len: usize) -> String {
+        let units: Vec<u16> = s.encode_utf16().collect();
+        let end = utf16_len.min(units.len());
+        String::from_utf16_lossy(&units[..end])
     }
 }
 
@@ -77,17 +120,28 @@ mod imp {
     };
     use windows::Win32::UI::Accessibility::{
         CUIAutomation, IUIAutomation, IUIAutomationTextPattern, IUIAutomationValuePattern,
-        UIA_TextPatternId, UIA_ValuePatternId,
+        TextPatternRangeEndpoint_End, TextPatternRangeEndpoint_Start, UIA_TextPatternId,
+        UIA_ValuePatternId,
     };
 
-    /// Read the focused element's text via UI Automation. Must run on a thread
-    /// with COM already initialized.
+    /// Read the focused element's text via UI Automation, up to the caret when
+    /// possible. Must run on a thread with COM already initialized.
     unsafe fn read_focused_text() -> Option<String> {
         let automation: IUIAutomation =
             CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()?;
         let element = automation.GetFocusedElement().ok()?;
 
-        // ValuePattern: typical single-line / edit controls expose their text here.
+        // Prefer TextPattern: it exposes the caret, so we can take the text
+        // before the insertion point.
+        if let Ok(unknown) = element.GetCurrentPattern(UIA_TextPatternId) {
+            if let Ok(text) = unknown.cast::<IUIAutomationTextPattern>() {
+                if let Some(s) = text_before_caret(&text) {
+                    return Some(s);
+                }
+            }
+        }
+
+        // Fallback: ValuePattern exposes the full value but no caret position.
         if let Ok(unknown) = element.GetCurrentPattern(UIA_ValuePatternId) {
             if let Ok(value) = unknown.cast::<IUIAutomationValuePattern>() {
                 if let Ok(bstr) = value.CurrentValue() {
@@ -99,18 +153,36 @@ mod imp {
             }
         }
 
-        // TextPattern: documents / multiline rich-text editors.
-        if let Ok(unknown) = element.GetCurrentPattern(UIA_TextPatternId) {
-            if let Ok(text) = unknown.cast::<IUIAutomationTextPattern>() {
-                if let Ok(range) = text.DocumentRange() {
-                    if let Ok(bstr) = range.GetText(-1) {
+        None
+    }
+
+    /// Text from the start of the document to the caret (start of the current
+    /// selection). Falls back to the full document text when the selection /
+    /// caret can't be resolved.
+    unsafe fn text_before_caret(text: &IUIAutomationTextPattern) -> Option<String> {
+        let doc = text.DocumentRange().ok()?;
+        if let Ok(selection) = text.GetSelection() {
+            if let Ok(caret) = selection.GetElement(0) {
+                if doc
+                    .MoveEndpointByRange(
+                        TextPatternRangeEndpoint_End,
+                        &caret,
+                        TextPatternRangeEndpoint_Start,
+                    )
+                    .is_ok()
+                {
+                    if let Ok(bstr) = doc.GetText(-1) {
                         return Some(bstr.to_string());
                     }
                 }
             }
         }
-
-        None
+        // Fall back to the full document text (fetch a fresh, unmodified range).
+        text.DocumentRange()
+            .ok()?
+            .GetText(-1)
+            .ok()
+            .map(|b| b.to_string())
     }
 
     /// Text content of the currently focused text field, or `None`.
