@@ -2385,6 +2385,7 @@ dependencies = [
  "handy-keys",
  "hf-hub",
  "hound",
+ "karabiner-input",
  "log",
  "natural",
  "once_cell",
@@ -3051,6 +3052,14 @@ checksum = "5dea2b27dd239b2556ed7a25ba842fe47fd602e7fc7433c2a8d6106d4d9edd70"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "karabiner-input"
+version = "0.1.0"
+source = "git+https://github.com/falleng0d/karabiner-input?rev=5e4f238e58b2a8d84104afd3a1148baeae733284#5e4f238e58b2a8d84104afd3a1148baeae733284"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

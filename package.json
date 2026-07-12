@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:karabiner-helper": "bun scripts/build-karabiner-helper.ts",
+    "install:karabiner-helper-local": "bash scripts/install-karabiner-helper-local.sh",
     "preview": "vite preview",
     "tauri": "tauri",
     "lint": "eslint src",

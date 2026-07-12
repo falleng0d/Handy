@@ -489,6 +489,10 @@ jobs:
           sudo cp -vL "$LIBDIR"/libtranscribe.so* "$LIBDIR"/libggml*.so* /usr/local/lib/ 2>/dev/null || true
           sudo ldconfig
 
+      - name: Build macOS Karabiner input helper
+        if: contains(inputs.platform, 'macos')
+        run: bun run build:karabiner-helper -- "${{ inputs.target }}"
+
       - name: Build with Tauri
         uses: tauri-apps/tauri-action@v0
         env:

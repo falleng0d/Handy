@@ -38,6 +38,13 @@ export const PasteMethodSetting: React.FC<PasteMethodProps> = React.memo(
         },
       ];
 
+      if (osType === "macos") {
+        options.splice(1, 0, {
+          value: "karabiner",
+          label: t("settings.advanced.pasteMethod.options.karabiner"),
+        });
+      }
+
       // Add Shift+Insert and Ctrl+Shift+V options for Windows and Linux only
       if (osType === "windows" || osType === "linux") {
         options.push(

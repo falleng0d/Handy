@@ -12,6 +12,8 @@ mod foreground;
 mod helpers;
 mod input;
 mod input_context;
+#[cfg(target_os = "macos")]
+mod karabiner_typing;
 mod llm_client;
 mod managers;
 mod overlay;

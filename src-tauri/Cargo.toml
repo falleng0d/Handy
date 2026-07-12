@@ -140,6 +140,7 @@ transcribe-cpp = { version = "0.1.3", default-features = false }
 [target.'cfg(target_os = "macos")'.dependencies]
 accessibility-sys = "0.2"
 core-foundation = "0.10"
+karabiner-input = { git = "https://github.com/falleng0d/karabiner-input", rev = "5e4f238e58b2a8d84104afd3a1148baeae733284", version = "0.1.0" }
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
 transcribe-cpp = { version = "0.1.3", default-features = false, features = ["metal"] }
 

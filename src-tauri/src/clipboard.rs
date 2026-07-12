@@ -586,7 +586,21 @@ fn send_return_key(enigo: &mut Enigo, key_type: AutoSubmitKey) -> Result<(), Str
 }
 
 fn should_send_auto_submit(auto_submit: bool, paste_method: PasteMethod) -> bool {
-    auto_submit && paste_method != PasteMethod::None
+    auto_submit && paste_method != PasteMethod::None && paste_method != PasteMethod::Karabiner
+}
+
+fn with_enigo<T>(
+    app_handle: &AppHandle,
+    action: impl FnOnce(&mut Enigo) -> Result<T, String>,
+) -> Result<T, String> {
+    let enigo_state = app_handle
+        .try_state::<EnigoState>()
+        .ok_or("Enigo state not initialized")?;
+    let mut enigo = enigo_state
+        .0
+        .lock()
+        .map_err(|e| format!("Failed to lock Enigo: {}", e))?;
+    action(&mut enigo)
 }
 
 pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
@@ -607,37 +621,43 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
         paste_method, paste_delay_ms, paste_delay_after_ms
     );
 
-    // Get the managed Enigo instance
-    let enigo_state = app_handle
-        .try_state::<EnigoState>()
-        .ok_or("Enigo state not initialized")?;
-    let mut enigo = enigo_state
-        .0
-        .lock()
-        .map_err(|e| format!("Failed to lock Enigo: {}", e))?;
-
     // Perform the paste operation
     match paste_method {
         PasteMethod::None => {
             info!("PasteMethod::None selected - skipping paste action");
         }
         PasteMethod::Direct => {
-            paste_direct(
-                &mut enigo,
+            with_enigo(&app_handle, |enigo| {
+                paste_direct(
+                    enigo,
+                    &text,
+                    #[cfg(target_os = "linux")]
+                    settings.typing_tool,
+                )
+            })?;
+        }
+        PasteMethod::Karabiner => {
+            #[cfg(target_os = "macos")]
+            crate::karabiner_typing::type_text(
                 &text,
-                #[cfg(target_os = "linux")]
-                settings.typing_tool,
+                settings.auto_submit,
+                settings.auto_submit_key,
             )?;
+
+            #[cfg(not(target_os = "macos"))]
+            return Err("Karabiner typing is only available on macOS".into());
         }
         PasteMethod::CtrlV | PasteMethod::CtrlShiftV | PasteMethod::ShiftInsert => {
-            paste_via_clipboard(
-                &mut enigo,
-                &text,
-                &app_handle,
-                &paste_method,
-                paste_delay_ms,
-                paste_delay_after_ms,
-            )?
+            with_enigo(&app_handle, |enigo| {
+                paste_via_clipboard(
+                    enigo,
+                    &text,
+                    &app_handle,
+                    &paste_method,
+                    paste_delay_ms,
+                    paste_delay_after_ms,
+                )
+            })?
         }
         PasteMethod::ExternalScript => {
             let script_path = settings
@@ -651,7 +671,9 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
 
     if should_send_auto_submit(settings.auto_submit, paste_method) {
         std::thread::sleep(Duration::from_millis(50));
-        send_return_key(&mut enigo, settings.auto_submit_key)?;
+        with_enigo(&app_handle, |enigo| {
+            send_return_key(enigo, settings.auto_submit_key)
+        })?;
     }
 
     // After pasting, optionally copy to clipboard based on settings
@@ -686,5 +708,6 @@ mod tests {
         assert!(should_send_auto_submit(true, PasteMethod::Direct));
         assert!(should_send_auto_submit(true, PasteMethod::CtrlShiftV));
         assert!(should_send_auto_submit(true, PasteMethod::ShiftInsert));
+        assert!(!should_send_auto_submit(true, PasteMethod::Karabiner));
     }
 }

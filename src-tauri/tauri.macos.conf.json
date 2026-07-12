@@ -1,0 +1,10 @@
+{
+  "bundle": {
+    "externalBin": ["binaries/karabiner-input-helper"],
+    "macOS": {
+      "files": {
+        "Library/LaunchDaemons/com.falleng0d.karabiner-input.helper.plist": "launch-daemons/com.falleng0d.karabiner-input.helper.plist"
+      }
+    }
+  }
+}

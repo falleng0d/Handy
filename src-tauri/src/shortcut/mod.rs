@@ -872,6 +872,7 @@ pub fn change_paste_method_setting(app: AppHandle, method: String) -> Result<(),
     let parsed = match method.as_str() {
         "ctrl_v" => PasteMethod::CtrlV,
         "direct" => PasteMethod::Direct,
+        "karabiner" => PasteMethod::Karabiner,
         "none" => PasteMethod::None,
         "shift_insert" => PasteMethod::ShiftInsert,
         "ctrl_shift_v" => PasteMethod::CtrlShiftV,
@@ -883,6 +884,12 @@ pub fn change_paste_method_setting(app: AppHandle, method: String) -> Result<(),
     };
     settings.paste_method = parsed;
     settings::write_settings(&app, settings);
+
+    #[cfg(target_os = "macos")]
+    if parsed == PasteMethod::Karabiner {
+        crate::karabiner_typing::ensure_registered()?;
+    }
+
     Ok(())
 }
 

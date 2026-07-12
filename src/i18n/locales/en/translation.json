@@ -308,7 +308,8 @@
           "clipboardShiftInsert": "Clipboard (Shift+Insert)",
           "direct": "Direct",
           "none": "None",
-          "externalScript": "External Script"
+          "externalScript": "External Script",
+          "karabiner": "Karabiner Virtual Keyboard"
         },
         "externalScriptPlaceholder": "/path/to/your/script.sh"
       },
