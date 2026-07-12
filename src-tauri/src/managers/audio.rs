@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 use tauri::Manager;
 
 const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
-const VAD_THRESHOLD: f32 = 0.3;
+const VAD_THRESHOLD: f32 = 0.8;
 
 fn set_mute(mute: bool) {
     // Expected behavior:
