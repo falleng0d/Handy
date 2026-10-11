@@ -90,15 +90,21 @@ fn recognition_language(language: &str) -> &str {
     }
 }
 
-/// The base code Handy matches a language *intent* on: a tag's primary subtag,
-/// with any BCP-47 region or script suffix dropped (`en-US` → `en`, `zh-CN` →
-/// `zh`, `zh-Hant` → `zh`). Bare and three-letter codes (`haw`) pass through
-/// unchanged. Lets a bare intent (`en`) match a model that advertises full
-/// locales (`en-US`) without discarding the real code the engine needs.
+/// A tag's primary language subtag, with any BCP-47 region/script suffix
+/// dropped (`en-US` → `en`, `zh-Hant` → `zh`).
 fn base_language(language: &str) -> &str {
-    match language.split_once('-') {
-        Some((base, _)) => base,
-        None => language,
+    language.split(&['-', '_'][..]).next().unwrap_or(language)
+}
+
+/// The stable user intent used to compare language codes across model
+/// families. Norwegian Bokmål (`nb`) maps to Norwegian (`no`), while Nynorsk
+/// (`nn`) remains distinct; Filipino (`fil`) maps to Tagalog (`tl`). This is
+/// only for matching: callers must return/pass the model's original code.
+pub(crate) fn canonical_language_code(language: &str) -> &str {
+    match base_language(language) {
+        "nb" => "no",
+        "fil" => "tl",
+        base => base,
     }
 }
 
@@ -262,10 +268,7 @@ impl ModelDescriptor {
 /// Matching is base-aware ([`base_language`]) and returns the model's own
 /// *concrete* code, so a bare intent (`en`) resolves to the exact string the
 /// engine's prompt table expects (`en-US`) for models that advertise full
-/// BCP-47 locales. Chinese *script* intents (`zh-Hans`/`zh-Hant`) are the sole
-/// exception: they pass through unchanged so the downstream Simplified /
-/// Traditional output conversion still fires (the engine path collapses them to
-/// a plain Chinese code separately).
+/// BCP-47 locales.
 pub fn effective_language(
     intent: &str,
     supported_languages: &[String],
@@ -276,13 +279,19 @@ pub fn effective_language(
     }
 
     if intent != "auto" {
-        if let Some(code) = supported_languages
+        // Prefer the same base code before considering an equivalence alias. If
+        // a future model advertises both `no` and `nb`, an explicit `nb` intent
+        // must select `nb`, regardless of capability-list order.
+        let exact_base_match = supported_languages
             .iter()
-            .find(|language| base_language(language) == base_language(intent))
-        {
-            if intent == "zh-Hans" || intent == "zh-Hant" {
-                return intent.to_string();
-            }
+            .find(|language| base_language(language) == base_language(intent));
+        let equivalent_match = || {
+            supported_languages.iter().find(|language| {
+                canonical_language_code(language) == canonical_language_code(intent)
+            })
+        };
+
+        if let Some(code) = exact_base_match.or_else(equivalent_match) {
             return code.clone();
         }
     }
@@ -310,24 +319,52 @@ pub struct DownloadProgress {
     pub percentage: f64,
 }
 
-/// Resolve a Hugging Face model file in the shared HF cache, if already present.
-/// Uses hf-hub's stock location (HF_HOME or ~/.cache/huggingface/hub) so
-/// downloads are shared with other tools.
+/// Return the active HF cache followed by the pre-v0.9.6 cache for portable
+/// upgrades. Downloads still use `Cache::from_env()` and therefore only write
+/// to the active portable cache.
+fn hf_caches() -> Vec<Cache> {
+    let current = Cache::from_env();
+    let mut caches = vec![current.clone()];
+
+    if crate::portable::is_portable() {
+        let legacy = crate::portable::previous_hf_home()
+            .map(|home| Cache::new(home.join("hub")))
+            .unwrap_or_default();
+        if legacy.path() != current.path() {
+            caches.push(legacy);
+        }
+    }
+
+    caches
+}
+
+fn hf_cached_path(repo_id: &str, revision: &str, filename: &str) -> Option<PathBuf> {
+    hf_cached_path_in(&hf_caches(), repo_id, revision, filename)
+}
+
+/// Resolve a Hugging Face model file in the supplied caches, if already present.
 ///
 /// hf-hub resolves purely through `refs/<revision>`. Pinned downloads write
 /// `refs/<commit-sha>`, but caches populated before pinning — or by other
 /// tools, which download via `main` — only have `refs/main`, so lookup falls
 /// back to it. Grandfathered `main` copies may predate the pin; per policy a
 /// working local model is never invalidated by routine catalog regeneration.
-fn hf_cached_path(repo_id: &str, revision: &str, filename: &str) -> Option<PathBuf> {
+fn hf_cached_path_in(
+    caches: &[Cache],
+    repo_id: &str,
+    revision: &str,
+    filename: &str,
+) -> Option<PathBuf> {
     let get = |rev: &str| {
-        Cache::from_env()
-            .repo(Repo::with_revision(
-                repo_id.to_string(),
-                RepoType::Model,
-                rev.to_string(),
-            ))
-            .get(filename)
+        caches.iter().find_map(|cache| {
+            cache
+                .repo(Repo::with_revision(
+                    repo_id.to_string(),
+                    RepoType::Model,
+                    rev.to_string(),
+                ))
+                .get(filename)
+        })
     };
     get(revision).or_else(|| (revision != "main").then(|| get("main")).flatten())
 }
@@ -1367,7 +1404,7 @@ impl ModelManager {
         let downloading_ids: HashSet<String> =
             self.cancel_flags.lock().unwrap().keys().cloned().collect();
         let mut models = self.available_models.lock().unwrap();
-        let mut vanished_alternates: Vec<String> = Vec::new();
+        let mut vanished_models: Vec<String> = Vec::new();
 
         for model in models.values_mut() {
             if let ModelSource::HuggingFace { repo_id, revision } = &model.source {
@@ -1385,9 +1422,9 @@ impl ModelManager {
                 // file is gone, the entry goes with it.
                 if !model.is_downloaded
                     && !downloading_ids.contains(&model.id)
-                    && Self::is_catalog_alternate_quant(repo_id, &model.filename)
+                    && Self::disappears_when_missing(model)
                 {
-                    vanished_alternates.push(model.id.clone());
+                    vanished_models.push(model.id.clone());
                 }
                 continue;
             }
@@ -1434,9 +1471,19 @@ impl ModelManager {
                     model.partial_size = 0;
                 }
             }
+
+            // Custom entries are discovered from files and have no download
+            // source. Once their file is gone, keeping the entry would offer a
+            // Download action that can never succeed.
+            if !model.is_downloaded
+                && !downloading_ids.contains(&model.id)
+                && Self::disappears_when_missing(model)
+            {
+                vanished_models.push(model.id.clone());
+            }
         }
 
-        for id in vanished_alternates {
+        for id in vanished_models {
             models.remove(&id);
         }
 
@@ -1450,6 +1497,24 @@ impl ModelManager {
             desc.default_file()
                 .is_some_and(|d| d.filename != file.filename)
         })
+    }
+
+    /// Entries discovered exclusively from disk should disappear with their
+    /// files. Catalog defaults remain so the UI can offer them for download.
+    fn disappears_when_missing(model: &ModelInfo) -> bool {
+        model.is_custom
+            || match &model.source {
+                ModelSource::HuggingFace { repo_id, .. } => {
+                    Self::is_catalog_alternate_quant(repo_id, &model.filename)
+                }
+                _ => false,
+            }
+    }
+
+    fn selected_model_is_available(models: &HashMap<String, ModelInfo>, model_id: &str) -> bool {
+        models
+            .get(model_id)
+            .is_some_and(|model| model.is_downloaded)
     }
 
     /// Remove a single file from the shared HF cache: the snapshot pointer for
@@ -1479,16 +1544,18 @@ impl ModelManager {
     fn auto_select_model_if_needed(&self) -> Result<()> {
         let mut settings = get_settings(&self.app_handle);
 
-        // Clear stale selection: selected model is set but doesn't exist
-        // in available_models (e.g. deleted custom model file)
+        // A model cannot remain selected after its files disappear. Catalog
+        // entries stay in the registry so they can be downloaded again, so
+        // checking only whether the id exists is not sufficient.
         if !settings.selected_model.is_empty() {
-            let models = self.available_models.lock().unwrap();
-            let exists = models.contains_key(&settings.selected_model);
-            drop(models);
+            let is_available = {
+                let models = self.available_models.lock().unwrap();
+                Self::selected_model_is_available(&models, &settings.selected_model)
+            };
 
-            if !exists {
+            if !is_available {
                 info!(
-                    "Selected model '{}' not found in available models, clearing selection",
+                    "Selected model '{}' is not available on disk; clearing selection",
                     settings.selected_model
                 );
                 settings.selected_model = String::new();
@@ -1695,7 +1762,9 @@ impl ModelManager {
     /// transcribe-cpp recognises are surfaced; arbitrary (e.g. LLM) GGUFs that
     /// share the cache are ignored.
     fn discover_hf_cache_models(available_models: &mut HashMap<String, ModelInfo>) {
-        Self::discover_hf_cache_models_in(Cache::from_env().path(), available_models);
+        for cache in hf_caches() {
+            Self::discover_hf_cache_models_in(cache.path(), available_models);
+        }
     }
 
     /// Scan a Hugging Face cache root (`<cache>/models--*`) for GGUF snapshots.
@@ -2399,8 +2468,14 @@ impl ModelManager {
                     deleted = true;
                 }
             }
+            // Files already missing (e.g. removed outside Handy) is not a failure —
+            // deleting is idempotent, so this still needs to fall through and clear
+            // the stale "Downloaded" entry rather than erroring out and leaving it stuck.
             if !deleted {
-                return Err(anyhow::anyhow!("No model files found to delete"));
+                debug!(
+                    "ModelManager: no HF cache/model files found on disk for {}; clearing stale entry",
+                    model_id
+                );
             }
             // Alternate-quant entries are discovery-created (the catalog only
             // seeds defaults), so deleting one un-discovers it rather than
@@ -2448,8 +2523,14 @@ impl ModelManager {
             deleted_something = true;
         }
 
+        // Files already missing (e.g. removed outside Handy) is not a failure —
+        // deleting is idempotent, so this still needs to fall through and clear
+        // the stale "Downloaded" entry rather than erroring out and leaving it stuck.
         if !deleted_something {
-            return Err(anyhow::anyhow!("No model files found to delete"));
+            debug!(
+                "ModelManager: no files found on disk for {}; clearing stale entry",
+                model_id
+            );
         }
 
         // Custom models should be removed from the list entirely since they
@@ -2468,6 +2549,38 @@ impl ModelManager {
         let _ = self.app_handle.emit("model-deleted", model_id);
 
         Ok(())
+    }
+
+    /// Reconcile a model that was advertised as downloaded but whose path has
+    /// since disappeared. This is deliberately narrower than a full rescan: it
+    /// only runs after a definitive missing-path check and cannot disturb an
+    /// unrelated in-flight download.
+    fn mark_model_unavailable(&self, model_id: &str) {
+        let removed = {
+            let mut models = self.available_models.lock().unwrap();
+            let should_remove = models
+                .get(model_id)
+                .is_some_and(Self::disappears_when_missing);
+            if should_remove {
+                models.remove(model_id);
+                true
+            } else if let Some(model) = models.get_mut(model_id) {
+                model.is_downloaded = false;
+                false
+            } else {
+                return;
+            }
+        };
+
+        if removed {
+            info!("Removing vanished discovered model '{}'", model_id);
+        } else {
+            info!("Marking model '{}' as unavailable on disk", model_id);
+        }
+        // Keep the persisted preference here: an already-loaded engine may
+        // still be usable, and re-downloading this model should restore it.
+        // Startup and explicit Rescan perform the broader selection cleanup.
+        let _ = self.app_handle.emit("models-updated", ());
     }
 
     pub fn get_model_path(&self, model_id: &str) -> Result<PathBuf> {
@@ -2505,6 +2618,7 @@ impl ModelManager {
                 }
                 return Ok(local_path);
             }
+            self.mark_model_unavailable(model_id);
             return Err(anyhow::anyhow!(
                 "Complete model file not found in HF cache or models dir: {}",
                 model_id
@@ -2517,25 +2631,32 @@ impl ModelManager {
             .join(format!("{}.partial", &model_info.filename));
 
         if model_info.is_directory {
-            // For directory-based models, ensure the directory exists and is complete
-            if model_path.exists() && model_path.is_dir() && !partial_path.exists() {
-                Ok(model_path)
-            } else {
-                Err(anyhow::anyhow!(
+            if !model_path.exists() || !model_path.is_dir() {
+                self.mark_model_unavailable(model_id);
+                return Err(anyhow::anyhow!(
                     "Complete model directory not found: {}",
                     model_id
-                ))
+                ));
             }
+            if partial_path.exists() {
+                return Err(anyhow::anyhow!(
+                    "Model directory is incomplete: {}",
+                    model_id
+                ));
+            }
+            Ok(model_path)
         } else {
-            // For file-based models (existing logic)
-            if model_path.exists() && !partial_path.exists() {
-                Ok(model_path)
-            } else {
-                Err(anyhow::anyhow!(
+            if !model_path.exists() {
+                self.mark_model_unavailable(model_id);
+                return Err(anyhow::anyhow!(
                     "Complete model file not found: {}",
                     model_id
-                ))
+                ));
             }
+            if partial_path.exists() {
+                return Err(anyhow::anyhow!("Model file is incomplete: {}", model_id));
+            }
+            Ok(model_path)
         }
     }
 
@@ -2580,12 +2701,72 @@ mod tests {
     use std::io::Write;
     use tempfile::TempDir;
 
-    #[test]
-    fn test_effective_language_accepts_chinese_script_intent_for_zh_capability() {
-        let languages = vec!["zh".to_string()];
+    fn add_cached_model(cache: &Path, repo_id: &str, revision: &str, filename: &str) -> PathBuf {
+        let repo_dir = cache.join(format!("models--{}", repo_id.replace('/', "--")));
+        let snapshot = repo_dir.join("snapshots").join(revision).join(filename);
+        fs::create_dir_all(snapshot.parent().unwrap()).unwrap();
+        fs::create_dir_all(repo_dir.join("refs")).unwrap();
+        fs::write(repo_dir.join("refs").join(revision), revision).unwrap();
+        fs::write(&snapshot, b"model").unwrap();
+        snapshot
+    }
 
-        assert_eq!(effective_language("zh-Hans", &languages, false), "zh-Hans");
-        assert_eq!(effective_language("zh-Hant", &languages, false), "zh-Hant");
+    #[test]
+    fn test_hf_cached_path_falls_back_to_legacy_cache() {
+        let active = TempDir::new().unwrap();
+        let legacy = TempDir::new().unwrap();
+        let expected = add_cached_model(
+            legacy.path(),
+            "handy-computer/test-model",
+            "old-revision",
+            "model.gguf",
+        );
+        let caches = vec![
+            Cache::new(active.path().to_path_buf()),
+            Cache::new(legacy.path().to_path_buf()),
+        ];
+
+        assert_eq!(
+            hf_cached_path_in(
+                &caches,
+                "handy-computer/test-model",
+                "old-revision",
+                "model.gguf"
+            ),
+            Some(expected)
+        );
+    }
+
+    #[test]
+    fn test_hf_cached_path_prefers_active_cache() {
+        let active = TempDir::new().unwrap();
+        let legacy = TempDir::new().unwrap();
+        let expected = add_cached_model(
+            active.path(),
+            "handy-computer/test-model",
+            "revision",
+            "model.gguf",
+        );
+        add_cached_model(
+            legacy.path(),
+            "handy-computer/test-model",
+            "revision",
+            "model.gguf",
+        );
+        let caches = vec![
+            Cache::new(active.path().to_path_buf()),
+            Cache::new(legacy.path().to_path_buf()),
+        ];
+
+        assert_eq!(
+            hf_cached_path_in(
+                &caches,
+                "handy-computer/test-model",
+                "revision",
+                "model.gguf"
+            ),
+            Some(expected)
+        );
     }
 
     #[test]
@@ -2618,13 +2799,19 @@ mod tests {
     }
 
     #[test]
-    fn test_effective_language_preserves_chinese_script_intent_for_locale_model() {
-        // Script intents survive so Simplified/Traditional output conversion
-        // still fires, even when the model advertises a regioned Chinese code.
-        let languages = vec!["en-US".to_string(), "zh-CN".to_string()];
+    fn test_effective_language_preserves_intent_across_model_code_variants() {
+        assert_eq!(effective_language("no", &["nb".to_string()], true), "nb");
+        assert_eq!(effective_language("nb", &["no".to_string()], true), "no");
+        assert_eq!(effective_language("tl", &["fil".to_string()], true), "fil");
+        assert_eq!(effective_language("fil", &["tl".to_string()], true), "tl");
+    }
 
-        assert_eq!(effective_language("zh-Hans", &languages, true), "zh-Hans");
-        assert_eq!(effective_language("zh-Hant", &languages, true), "zh-Hant");
+    #[test]
+    fn test_effective_language_prefers_exact_norwegian_code() {
+        let languages = vec!["no".to_string(), "nb".to_string()];
+
+        assert_eq!(effective_language("nb", &languages, true), "nb");
+        assert_eq!(effective_language("no", &languages, true), "no");
     }
 
     #[test]
@@ -2728,6 +2915,7 @@ mod tests {
         assert!(matches!(custom.source, ModelSource::Local)); // Custom models have no remote source
         assert!(custom.is_downloaded);
         assert!(custom.is_custom);
+        assert!(ModelManager::disappears_when_missing(custom));
         assert_eq!(custom.accuracy_score, 0.0);
         assert_eq!(custom.speed_score, 0.0);
         assert!(custom.supported_languages.is_empty());
@@ -2825,6 +3013,24 @@ mod tests {
         assert!(!alt_info.is_recommended);
         assert!(!alt_info.is_custom);
 
+        // Catalog defaults stay visible for re-download when their file is gone.
+        assert!(!ModelManager::disappears_when_missing(&default_info));
+
+        let mut selection_models = HashMap::new();
+        selection_models.insert(default_info.id.clone(), default_info.clone());
+        assert!(!ModelManager::selected_model_is_available(
+            &selection_models,
+            &default_info.id
+        ));
+        selection_models
+            .get_mut(&default_info.id)
+            .unwrap()
+            .is_downloaded = true;
+        assert!(ModelManager::selected_model_is_available(
+            &selection_models,
+            &default_info.id
+        ));
+
         // The default rendered through the per-file path matches to_model_info,
         // so seeded entries and discovered defaults can never diverge.
         let same = desc.to_model_info_for_file(&desc.files[1], &status);
@@ -2871,6 +3077,7 @@ mod tests {
         assert!(info.is_downloaded);
         assert!(!info.is_custom);
         assert!(matches!(info.source, ModelSource::HuggingFace { .. }));
+        assert!(ModelManager::disappears_when_missing(info));
 
         // …while the default-quant file dedups onto its seeded entry: exactly
         // one new id, and no filename-stem custom entries for either file.
